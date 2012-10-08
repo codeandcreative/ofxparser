@@ -50,8 +50,6 @@ class OFXFile {
   public function __get($property) {
     if(isset($this->_data[$property])) {
     	return $this->_data[$property];
-    } else {
-    	throw new Exception('Attempt to access non-existent variable ("$property") failed');
     }
   }
   
@@ -98,7 +96,7 @@ class OFXFile {
 	
 				$this->_data['aggregateList'] = array();
 				$this->getNode($matches[2], $this->_data['doc'], $this->_data['aggregateList'], 0);
-				$this->transactions = &$this->doc['OFX'][0]['BANKMSGSRSV1'][0]['STMTTRNRS'][0]['STMTRS'][0]['BANKTRANLIST'][0]['STMTTRN'];
+				$this->transactions = $this->doc['OFX'][0]['BANKMSGSRSV1'][0]['STMTTRNRS'][0]['STMTRS'][0]['BANKTRANLIST'][0]['STMTTRN'];
 
 	
 				$this->report("Here's the document:", OFXFILEREPORTLEVEL_DEV);
@@ -120,11 +118,9 @@ class OFXFile {
    * TODO implement date filter
    */
   public function getTransactions($startDate = false, $endDate = false) {
-  	if(isset($this->transactions)) {
-	  	return $this->transactions;
-  	}
-  	
-  	return null;
+	  return $this->transactions;
+  
+    //$this->report(print_r($this->transactions,1), OFXFILEREPORTLEVEL_DEBUG);
   }
   
   /**
@@ -132,12 +128,12 @@ class OFXFile {
    *
    */
   public function getTransactionsCSV($startDate = false, $endDate = false) {
-  	if(!isset($this->csv)) {
+  	if(empty($this->csv)) {
   		$this->csv = "";
   		$txns = $this->getTransactions($startDate,$endDate);
 		  if(!empty($txns)) {
 			  foreach($txns as $t) {
-				  $csv += implode(',', $t) . "\n";
+				  $this->csv .= implode(',', $t) . "\n";
 			  }
 		  }
 	  }

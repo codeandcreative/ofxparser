@@ -9,9 +9,11 @@ if($argc == 3) {
   	$ofx = new OFXFile($argv[1], OFXFILEREPORTLEVEL_DEBUG);
     $ofx->parse();
     $csv = $ofx->getTransactionsCSV();
-    
+   
+    print_r($csv);
+
     if(!file_put_contents($argv[2], $csv)) {
-	    print "Error writing csv to ". $argv[2];
+	    print "Error writing csv to ". $argv[2] ."\n";
     }
   } else {
     printUsage("Infile doesn't exist");
