@@ -2,7 +2,8 @@
 /**
  * @file
  * Captures the contents of an OFX file
- *
+ * 
+ * Oct 8 2012			Giving up on a more efficient parse algorithm for now. Implementing more functionality around getting the data
  * Sept 26 2012:  This code is still in flux. I'm currently concentrating on a nifty pair of RegExp's to parse the thing along with recursion.
  *                The problem is currently in finding single line parameters between two aggregates
  */
@@ -17,7 +18,6 @@ define('OFXFILEREPORTLEVEL_DEV', '10');
  * OFXFile
  * Parses and represents a standard OFX file
  *
- * TODO add export function
  * TODO add DTD validation
  * TODO move reporting out of this class
  */
@@ -27,25 +27,21 @@ class OFXFile {
   /**
    * Construct
    */
-  public function __construct($filehandle, $reportlevel) {
-    if($filehandle != null) {
-    	$this->_data = array();
-    	$this->_data['infile'] = $filehandle;              // file pointer to the ofx file
-    	$this->_data['rawheader'] = false;                 // contents of the file's raw header (ofx 1.0)
-    	$this->_data['reportlevel'] = $reportlevel;        // sets verbosity of reporting
-    	$this->_data['isDescribed'] = false;               // used to flag discovery of ofx file description (header type)
-			$this->_data['doc'] = array();                     // the parsed ofx file DOM
-			
-			// preg_match can be limited on the number of backtracks it can perform. For smaller source text, 
-			// this rarely becomes a problem. But when applying a regexp to an entire document, you can run into
-			// this limit and cause unpredictable results.
-			if(!ini_set('pcre.backtrack_limit', 1000000)) {
-				$this->report("Couldn't change pcre backtrack limit. If file is large, this may not work...", OFXFILEREPORTLEVEL_ERROR);
-				throw new Exception("Couldn't change pcre backtrack limit.");
-			}
-    } else {
-    	throw new Exception("File doesn't exist");
-    }
+  public function __construct($filepath, $reportlevel) {
+  	$this->_data = array();
+  	$this->_data['infile'] = $filepath;              	 // file path to the ofx file
+  	$this->_data['rawheader'] = false;                 // contents of the file's raw header (ofx 1.0)
+  	$this->_data['reportlevel'] = $reportlevel;        // sets verbosity of reporting
+  	$this->_data['isDescribed'] = false;               // used to flag discovery of ofx file description (header type)
+		$this->_data['doc'] = array();                     // the parsed ofx file DOM
+		
+		// preg_match can be limited on the number of backtracks it can perform. For smaller source text, 
+		// this rarely becomes a problem. But when applying a regexp to an entire document, you can run into
+		// this limit and cause unpredictable results.
+		if(!ini_set('pcre.backtrack_limit', 1000000)) {
+			$this->report("Couldn't change pcre backtrack limit. If file is large, this may not work...", OFXFILEREPORTLEVEL_ERROR);
+			throw new Exception("Couldn't change pcre backtrack limit.");
+		}
   }
   
   /**
@@ -75,44 +71,78 @@ class OFXFile {
   public function parse() {
   	$linecount = 0;
 
-  		$file_as_string = trim(file_get_contents($this->_data['infile']));
-  		
-  		$matches = array();
-  		if(preg_match('/(?s)((?:[\w\d\:\s]*){9,9})?(<OFX>.*<\/OFX>)/',$file_as_string,$matches)) {
-  			if(count($matches > 2)) { 
-  				// must be version < 200
-  				$this->rawheader = $matches[1];
-  				
-  				if(preg_match_all('/(.*):(.*)/',$this->rawheader,$linematches)) {
-  					for($i = 0; $i < count($linematches[1]); $i++) {
-  						$this->_data[$linematches[1][$i]] = $linematches[2][$i]; 
-  					}
-  				}
-  				$this->isDescribed = true;
-  			}
-  			
-  			if(!$this->isDescribed) {
-  				// must be version > 200
-  				
-  				// TODO get the version info out of the attributes
-  			}
+		$file_as_string = file_get_contents($this->_data['infile']);
+		
+		if($file_as_string) {
+			$file_as_string = trim($file_as_string);
+			
+			$matches = array();
+			if(preg_match('/(?s)((?:[\w\d\:\s]*){9,9})?(<OFX>.*<\/OFX>)/',$file_as_string,$matches)) {
+				if(count($matches > 2)) { 
+					// must be version < 200
+					$this->rawheader = $matches[1];
+					
+					if(preg_match_all('/(.*):(.*)/',$this->rawheader,$linematches)) {
+						for($i = 0; $i < count($linematches[1]); $i++) {
+							$this->_data[$linematches[1][$i]] = $linematches[2][$i]; 
+						}
+					}
+					$this->isDescribed = true;
+				}
+				
+				if(!$this->isDescribed) {
+					// must be version > 200
+					
+					// TODO get the version info out of the attributes
+				}
+	
+				$this->_data['aggregateList'] = array();
+				$this->getNode($matches[2], $this->_data['doc'], $this->_data['aggregateList'], 0);
+				$this->transactions = &$this->doc['OFX'][0]['BANKMSGSRSV1'][0]['STMTTRNRS'][0]['STMTRS'][0]['BANKTRANLIST'][0]['STMTTRN'];
 
-  			$this->_data['aggregateList'] = array();
-  			$this->getNode($matches[2], $this->_data['doc'], $this->_data['aggregateList'], 0);
-  			$this->report("Here's the document:", OFXFILEREPORTLEVEL_DEV);
-  			$this->report(print_r($doc,1), OFXFILEREPORTLEVEL_DEV);
-  			//$this->report("Here's the doc:", OFXFILEREPORTLEVEL_INFO);  			
-  			//$this->report(print_r($doc,1), OFXFILEREPORTLEVEL_INFO);
-  			$this->report("Here's the transactions:", OFXFILEREPORTLEVEL_INFO);  			
-  			$this->report(print_r($this->getTransactions(),1), OFXFILEREPORTLEVEL_INFO);
-  		
-  		} else {
-  			$this->report("It's not an OFX file...?", OFXFILEREPORTLEVEL_INFO);
-  		}
+	
+				$this->report("Here's the document:", OFXFILEREPORTLEVEL_DEV);
+				$this->report(print_r($doc,1), OFXFILEREPORTLEVEL_DEV);
+				$this->report("Here's the transactions:", OFXFILEREPORTLEVEL_DEBUG);  			
+				$this->report(print_r($this->getTransactions(),1), OFXFILEREPORTLEVEL_DEBUG);
+			
+			} else {
+				$this->report("It's not an OFX file...?", OFXFILEREPORTLEVEL_INFO);
+			}
+		} else {
+			$this->report("Couldn't open file ". $this->infile, OFXFILEREPORTLEVEL_ERROR);
+		}
   }
   
+  /**
+   * query transactions list
+   *
+   * TODO implement date filter
+   */
   public function getTransactions($startDate = false, $endDate = false) {
-    return $this->doc['OFX'][0]['BANKMSGSRSV1'][0]['STMTTRNRS'][0]['STMTRS'][0]['BANKTRANLIST'][0]['STMTTRN'];
+  	if(isset($this->transactions)) {
+	  	return $this->transactions;
+  	}
+  	
+  	return null;
+  }
+  
+  /**
+   * get transactions as a csv string
+   *
+   */
+  public function getTransactionsCSV($startDate = false, $endDate = false) {
+  	if(!isset($this->csv)) {
+  		$this->csv = "";
+  		$txns = $this->getTransactions($startDate,$endDate);
+		  if(!empty($txns)) {
+			  foreach($txns as $t) {
+				  $csv += implode(',', $t) . "\n";
+			  }
+		  }
+	  }
+	  
+	  return $this->csv;
   }
   
   /**
@@ -149,9 +179,6 @@ class OFXFile {
 
   	$pattern = ''; // pattern to find aggregates
   	$elpattern = ''; // pattern to find elements (single line)
-  	
-  	// html parse example - great if you know what 
-  	/*<html>(?>.*?<head>)(?>.*?<title>)(?>.*?</title>)(?>.*?</head>)(?>.*?<body[^>]*>)(?>.*?</body>).*?</html>*/
   	
   	switch($treelevel) {
   		case 0:	
@@ -208,16 +235,13 @@ class OFXFile {
   	 */
   	$sgml_lines = preg_split("/((\r?\n)|(\r\n?))/", $sgml);
     $this->report("Looking for elements...",OFXFILEREPORTLEVEL_DEBUG);  	
-  	//$this->report("domNode keys: \n". print_r(array_keys($domNode), 1),OFXFILEREPORTLEVEL_DEBUG);  	
+
   	$in_aggregate = false;
   	foreach($sgml_lines as $line) {
   	 $line = trim($line);
   	 if(!empty($line)) {
-    	 //$this->report("Testing line: ". $line,OFXFILEREPORTLEVEL_DEBUG);
     	 if(preg_match('/[\s]*<([^\/>]+)>(.*)/',$line,$elmatches)) {
     	   
-    	   //$this->report(print_r($elmatches,1),OFXFILEREPORTLEVEL_DEBUG);
-      	 
       	 if(array_key_exists($elmatches[1], $aggregateList)) {
       	   $this->report('in aggregate: '.$elmatches[1],OFXFILEREPORTLEVEL_DEV);
       	   $in_aggregate = true;
