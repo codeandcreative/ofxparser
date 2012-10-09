@@ -96,7 +96,10 @@ class OFXFile {
 	
 				$this->_data['aggregateList'] = array();
 				$this->getNode($matches[2], $this->_data['doc'], $this->_data['aggregateList'], 0);
-				$this->transactions = $this->doc['OFX'][0]['BANKMSGSRSV1'][0]['STMTTRNRS'][0]['STMTRS'][0]['BANKTRANLIST'][0]['STMTTRN'];
+				
+        // TODO this works for MY bank for a Checking account. What happens if this is a Credit Card acct? Or some other type of acct?
+        // Looking at the OFX DTD 1.03, I'm not so sure. I think it depends on the bank.
+        $this->transactions = $this->doc['OFX'][0]['BANKMSGSRSV1'][0]['STMTTRNRS'][0]['STMTRS'][0]['BANKTRANLIST'][0]['STMTTRN'];
 
 	
 				$this->report("Here's the document:", OFXFILEREPORTLEVEL_DEV);
@@ -119,20 +122,25 @@ class OFXFile {
    */
   public function getTransactions($startDate = false, $endDate = false) {
 	  return $this->transactions;
-  
-    //$this->report(print_r($this->transactions,1), OFXFILEREPORTLEVEL_DEBUG);
   }
   
   /**
    * get transactions as a csv string
    *
+   * NOTE: according to the DTD the field list in a transaction is variable, i.e., each bank may do it differently
    */
-  public function getTransactionsCSV($startDate = false, $endDate = false) {
+  public function getTransactionsCSV($startDate = false, $endDate = false, $inclHeader = true) {
   	if(empty($this->csv)) {
   		$this->csv = "";
   		$txns = $this->getTransactions($startDate,$endDate);
-		  if(!empty($txns)) {
-			  foreach($txns as $t) {
+		  
+      if(!empty($txns)) {i
+        if($inclHeader) {
+			    $fieldnames = array_keys($txns[0]);
+          $this->csv .= implode(',', $fieldnames) ."\n";
+        }
+
+        foreach($txns as $t) {
 				  $this->csv .= implode(',', $t) . "\n";
 			  }
 		  }
