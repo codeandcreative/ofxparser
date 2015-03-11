@@ -134,7 +134,7 @@ class OFXFile {
   		$this->csv = "";
   		$txns = $this->getTransactions($startDate,$endDate);
 		  
-      if(!empty($txns)) {i
+      if(!empty($txns)) {
         if($inclHeader) {
 			    $fieldnames = array_keys($txns[0]);
           $this->csv .= implode(',', $fieldnames) ."\n";
